@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starry Galaxy</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #050d1a 0%, #0a0520 50%, #020010 100%);
+            background-color: #020010;
+            font-family: 'Times New Roman', serif;
+        }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10; pointer-events: none;
+            display: flex; flex-direction: column;
+            align-items: center;
+            padding-top: 40px;
+            box-sizing: border-box;
+            transition: opacity 0.5s ease;
+        }
+        .ui-hidden { opacity: 0 !important; pointer-events: none !important; }
+
+        #loader {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #020010; z-index: 100;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.8s ease-out;
+        }
+        .loader-text {
+            color: #8899cc; font-size: 14px; letter-spacing: 4px; margin-top: 20px;
+            text-transform: uppercase; font-weight: 100;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 1px solid rgba(136, 153, 204, 0.2);
+            border-top: 1px solid #8899cc; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        h1 {
+            color: #c8d8ff; font-size: 52px; margin: 0; font-weight: 400;
+            letter-spacing: 6px;
+            text-shadow: 0 0 50px rgba(150, 180, 255, 0.5);
+            background: linear-gradient(to bottom, #fff, #8899cc);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-family: 'Cinzel', 'Times New Roman', serif;
+            opacity: 0.9;
+            transition: opacity 0.5s ease;
+        }
+
+        .controls-wrapper {
+            position: absolute;
+            top: 30px; right: 30px;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            z-index: 20;
+            transition: opacity 0.5s ease;
+        }
+        .btn-group { display: flex; gap: 10px; }
+
+        .upload-btn {
+            background: rgba(10, 15, 30, 0.7);
+            border: 1px solid rgba(136, 170, 255, 0.4);
+            color: #99aadd;
+            padding: 10px 20px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 10px;
+            transition: all 0.4s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+            min-width: 120px;
+        }
+        .upload-btn:hover {
+            background: #4466aa;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(100, 140, 220, 0.5);
+        }
+        .hint-text {
+            color: rgba(150, 170, 220, 0.5);
+            font-size: 9px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-align: right;
+            margin-top: 5px;
+        }
+
+        input[type="file"] { display: none; }
+
+        #webcam-wrapper {
+            position: absolute;
+            bottom: 30px; left: 30px;
+            width: 280px; height: 210px;
+            border: 1px solid rgba(136, 170, 255, 0.5);
+            box-shadow: 0 0 20px rgba(0,0,0,0.9);
+            border-radius: 4px;
+            overflow: hidden;
+            opacity: 1;
+            pointer-events: none;
+            z-index: 50;
+            background: #000;
+            transition: opacity 0.5s ease;
+        }
+        #webcam {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        #debug-info {
+            position: absolute;
+            bottom: 5px; left: 5px;
+            color: rgba(150, 180, 220, 0.8);
+            font-size: 10px;
+            font-family: monospace;
+            background: rgba(0,0,0,0.5);
+            padding: 2px 5px;
+            pointer-events: none;
+        }
+    </style>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loader">
+        <div class="spinner"></div>
+        <div class="loader-text">Loading Galaxy</div>
+    </div>
+    <div id="canvas-container"></div>
+    <div id="ui-layer">
+        <h1>Starry Galaxy</h1>
+        <div class="controls-wrapper">
+            <div class="btn-group">
+                <label class="upload-btn">
+                    Select Folder
+                    <input type="file" id="folder-input" webkitdirectory directory multiple>
+                </label>
+                <label class="upload-btn">
+                    Select Files
+                    <input type="file" id="file-input" multiple accept="image/*">
+                </label>
+            </div>
+            <button class="upload-btn" id="toggle-camera-btn">Hide Camera</button>
+            <div class="hint-text">Load photos to place them among the stars</div>
+            <div class="hint-text" style="opacity: 0.7; font-size: 8px;">Or put photos in "./images/" (1.jpg - 30.jpg)</div>
+        </div>
+    </div>
+    <div id="webcam-wrapper">
+        <video id="webcam" autoplay playsinline></video>
+        <div id="debug-info">Initializing...</div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+        import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
+        const CONFIG = {
+            colors: {
+                bg: 0x020010,
+                fog: 0x020010,
+                coreWarm: 0xffeedd,
+                coreGold: 0xffcc88,
+                armBlue: 0x8899dd,
+                armDeep: 0x5566bb,
+                hiiPink: 0xff7799,
+                haloBlue: 0x667799,
+                nebulaPurple: 0x6644aa,
+                nebulaBlue: 0x3355aa,
+            },
+            particles: {
+                coreCount: 500,
+                armCount: 1200,
+                hiiCount: 200,
+                haloCount: 400,
+                nebulaCount: 1200,
+                shootingStarCount: 8,
+                galaxyRadius: 15,
+                numArms: 4,
+                scatterRadius: 18,
+            },
+            camera: { z: 50 },
+            preload: {
+                autoScanLocal: false,
+                scanCount: 0,
+                images: []
+            }
+        };
+
+        const STATE = {
+            spreadFactor: 0.5,
+            targetSpread: 0.5,
+            focusTarget: null,
+            hand: { detected: false, x: 0, y: 0, smoothX: 0, smoothY: 0 },
+            rotation: { x: 0, y: 0 }
+        };
+
+        let scene, camera, renderer, composer;
+        let mainGroup;
+        let clock = new THREE.Clock();
+        let particleSystem = [];
+        let photoMeshGroup = new THREE.Group();
+        let handLandmarker, video;
+        let shootingStarsData = [];
+        let shootingStarsHeads, shootingStarsTrails;
+        const debugInfo = document.getElementById('debug-info');
+
+        async function init() {
+            initThree();
+            setupEnvironment();
+            setupLights();
+            createCoreGlow();
+            createParticles();
+            createNebula();
+            createShootingStars();
+            loadPredefinedImages();
+            setupPostProcessing();
+            setupEvents();
+            await initMediaPipe();
+
+            const loader = document.getElementById('loader');
+            loader.style.opacity = 0;
+            setTimeout(() => loader.remove(), 800);
+            animate();
+        }
+
+        function loadPredefinedImages() {
+            const loader = new THREE.TextureLoader();
+            CONFIG.preload.images.forEach(url => {
+                loader.load(url,
+                    (t) => { t.colorSpace = THREE.SRGBColorSpace; addPhotoToScene(t); },
+                    undefined,
+                    () => {}
+                );
+            });
+            if (CONFIG.preload.autoScanLocal) {
+                for (let i = 1; i <= CONFIG.preload.scanCount; i++) {
+                    const path = `./images/(${i}).png`;
+                    loader.load(path,
+                        (t) => { t.colorSpace = THREE.SRGBColorSpace; addPhotoToScene(t); },
+                        undefined, () => {}
+                    );
+                }
+            }
+        }
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(CONFIG.colors.bg);
+            scene.fog = new THREE.FogExp2(CONFIG.colors.fog, 0.008);
+            camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, CONFIG.camera.z);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.toneMapping = THREE.ReinhardToneMapping;
+            renderer.toneMappingExposure = 1.8;
+            container.appendChild(renderer.domElement);
+            mainGroup = new THREE.Group();
+            scene.add(mainGroup);
+        }
+
+        function setupEnvironment() {
+            const pmremGenerator = new THREE.PMREMGenerator(renderer);
+            scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+        }
+
+        function setupLights() {
+            const ambient = new THREE.AmbientLight(0x112244, 0.35);
+            scene.add(ambient);
+
+            const coreWarm = new THREE.PointLight(0xffddaa, 8, 12);
+            coreWarm.position.set(0, 0, 0);
+            mainGroup.add(coreWarm);
+
+            const coreWide = new THREE.PointLight(0xffcc88, 3, 25);
+            coreWide.position.set(0, 0, 0);
+            mainGroup.add(coreWide);
+
+            const spotBlue = new THREE.SpotLight(0x4466aa, 800);
+            spotBlue.position.set(30, 40, 40);
+            spotBlue.angle = 0.5;
+            spotBlue.penumbra = 0.5;
+            scene.add(spotBlue);
+
+            const spotPurple = new THREE.SpotLight(0x5544aa, 500);
+            spotPurple.position.set(-30, 15, -30);
+            scene.add(spotPurple);
+
+            const rimLight = new THREE.DirectionalLight(0x8899cc, 0.4);
+            rimLight.position.set(0, 0, 50);
+            scene.add(rimLight);
+        }
+
+        function createCoreGlow() {
+            const glowGeo = new THREE.SphereGeometry(2.5, 32, 32);
+            const glowMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColor1: { value: new THREE.Color('#ffe8cc') },
+                    uColor2: { value: new THREE.Color('#ff9944') },
+                },
+                vertexShader: /*glsl*/`
+                    varying vec3 vPos;
+                    varying vec3 vNormal;
+                    void main() {
+                        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                        vPos = worldPos.xyz;
+                        vNormal = normalize(mat3(modelMatrix) * normal);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: /*glsl*/`
+                    varying vec3 vPos;
+                    varying vec3 vNormal;
+                    uniform float uTime;
+                    uniform vec3 uColor1;
+                    uniform vec3 uColor2;
+                    void main() {
+                        float d = length(vPos);
+                        float glow = exp(-d * 0.8) * 0.7;
+                        float pulse = 1.0 + sin(uTime * 2.0 + d) * 0.15;
+                        vec3 col = mix(uColor2, uColor1, exp(-d * 0.5)) * glow * pulse;
+                        float alpha = glow * 0.5;
+                        gl_FragColor = vec4(col, alpha);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+            const glowSphere = new THREE.Mesh(glowGeo, glowMat);
+            glowSphere.name = 'coreGlow';
+            mainGroup.add(glowSphere);
+        }
+
+        function setupPostProcessing() {
+            const renderScene = new RenderPass(scene, camera);
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            bloomPass.threshold = 0.5;
+            bloomPass.strength = 0.65;
+            bloomPass.radius = 0.6;
+            composer = new EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+        }
+
+        function createShootingStars() {
+            const trailLen = 12;
+            const count = CONFIG.particles.shootingStarCount;
+            const totalTrailPts = count * trailLen;
+
+            const headGeo = new THREE.BufferGeometry();
+            const headPositions = new Float32Array(count * 3);
+            headGeo.setAttribute('position', new THREE.BufferAttribute(headPositions, 3));
+
+            const headCanvas = document.createElement('canvas');
+            headCanvas.width = 32; headCanvas.height = 32;
+            const hctx = headCanvas.getContext('2d');
+            const hg = hctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+            hg.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            hg.addColorStop(0.3, 'rgba(200, 220, 255, 0.8)');
+            hg.addColorStop(1, 'rgba(100, 150, 255, 0)');
+            hctx.fillStyle = hg;
+            hctx.fillRect(0, 0, 32, 32);
+            const headTex = new THREE.CanvasTexture(headCanvas);
+
+            shootingStarsHeads = new THREE.Points(headGeo, new THREE.PointsMaterial({
+                color: 0xffffff, size: 1.8, map: headTex,
+                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            }));
+            scene.add(shootingStarsHeads);
+
+            const trailGeo = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(totalTrailPts * 3);
+            trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+
+            const trailCanvas = document.createElement('canvas');
+            trailCanvas.width = 16; trailCanvas.height = 16;
+            const tctx = trailCanvas.getContext('2d');
+            const tg = tctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+            tg.addColorStop(0, 'rgba(180, 200, 255, 0.8)');
+            tg.addColorStop(1, 'rgba(100, 140, 255, 0)');
+            tctx.fillStyle = tg;
+            tctx.fillRect(0, 0, 16, 16);
+            const trailTex = new THREE.CanvasTexture(trailCanvas);
+
+            shootingStarsTrails = new THREE.Points(trailGeo, new THREE.PointsMaterial({
+                color: 0x8899cc, size: 0.5, map: trailTex,
+                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            }));
+            scene.add(shootingStarsTrails);
+
+            for (let i = 0; i < count; i++) {
+                shootingStarsData.push({
+                    pos: new THREE.Vector3(0, -100, 0),
+                    vel: new THREE.Vector3(0, 0, 0),
+                    life: 0,
+                    maxLife: 2 + Math.random() * 4,
+                    trail: [],
+                    trailMax: trailLen,
+                });
+            }
+            resetShootingStar(0, true);
+            for (let i = 1; i < count; i++) resetShootingStar(i, true);
+        }
+
+        function resetShootingStar(i, initial) {
+            const d = shootingStarsData[i];
+            const r = 30 + Math.random() * 15;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            d.pos.set(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
+            );
+            const tangent = new THREE.Vector3(-d.pos.y, d.pos.x, 0).normalize();
+            const up = new THREE.Vector3(0, 1, 0);
+            const tangent2 = new THREE.Vector3().crossVectors(d.pos.clone().normalize(), tangent).normalize();
+            const dir = tangent.clone().multiplyScalar(Math.random() - 0.5)
+                .add(tangent2.clone().multiplyScalar(Math.random() - 0.5)).normalize();
+            const speed = 15 + Math.random() * 25;
+            d.vel.copy(dir).multiplyScalar(speed);
+            d.life = initial ? Math.random() * d.maxLife : 0;
+            d.trail = [];
+            for (let t = 0; t < d.trailMax; t++) d.trail.push(d.pos.clone());
+        }
+
+        function updateShootingStars(dt) {
+            const headPos = shootingStarsHeads.geometry.attributes.position.array;
+            const trailPos = shootingStarsTrails.geometry.attributes.position.array;
+            const trailMax = shootingStarsData[0]?.trailMax || 12;
+
+            for (let i = 0; i < shootingStarsData.length; i++) {
+                const d = shootingStarsData[i];
+                d.life += dt;
+                if (d.life > d.maxLife || d.pos.length() > 50) resetShootingStar(i, false);
+
+                d.pos.add(d.vel.clone().multiplyScalar(dt));
+                d.trail.unshift(d.pos.clone());
+                if (d.trail.length > trailMax) d.trail.pop();
+
+                headPos[i * 3] = d.pos.x;
+                headPos[i * 3 + 1] = d.pos.y;
+                headPos[i * 3 + 2] = d.pos.z;
+
+                for (let t = 0; t < d.trail.length; t++) {
+                    const idx = (i * trailMax + t) * 3;
+                    trailPos[idx] = d.trail[t].x;
+                    trailPos[idx + 1] = d.trail[t].y;
+                    trailPos[idx + 2] = d.trail[t].z;
+                }
+                for (let t = d.trail.length; t < trailMax; t++) {
+                    const idx = (i * trailMax + t) * 3;
+                    trailPos[idx] = d.pos.x;
+                    trailPos[idx + 1] = d.pos.y;
+                    trailPos[idx + 2] = d.pos.z;
+                }
+            }
+            shootingStarsHeads.geometry.attributes.position.needsUpdate = true;
+            shootingStarsTrails.geometry.attributes.position.needsUpdate = true;
+        }
+
+        class Particle {
+            constructor(mesh, type, isNebula = false) {
+                this.mesh = mesh;
+                this.type = type;
+                this.isNebula = isNebula;
+                this.posGalaxy = new THREE.Vector3();
+                this.posScatter = new THREE.Vector3();
+                this.baseScale = mesh.scale.x;
+                const speedMult = (type === 'PHOTO') ? 0.3 : 2.0;
+                this.spinSpeed = new THREE.Vector3(
+                    (Math.random() - 0.5) * speedMult,
+                    (Math.random() - 0.5) * speedMult,
+                    (Math.random() - 0.5) * speedMult
+                );
+                this.twinkleSpeed = 1.5 + Math.random() * 3;
+                this.twinklePhase = Math.random() * Math.PI * 2;
+                this.calculatePositions();
+            }
+
+            calculatePositions() {
+                if (this.type === 'PHOTO') {
+                    this.posGalaxy.set(0, 0, 0);
+                    const rScatter = 8 + Math.random() * 12;
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    this.posScatter.set(
+                        rScatter * Math.sin(phi) * Math.cos(theta),
+                        rScatter * Math.sin(phi) * Math.sin(theta),
+                        rScatter * Math.cos(phi)
+                    );
+                    return;
+                }
+
+                // Galaxy position is set at creation time - keep it
+                this.posGalaxy.copy(this.mesh.position.clone());
+
+                const rScatter = this.isNebula ? (12 + Math.random() * 20) : (8 + Math.random() * 12);
+                const thetaS = Math.random() * Math.PI * 2;
+                const phiS = Math.acos(2 * Math.random() - 1);
+                this.posScatter.set(
+                    rScatter * Math.sin(phiS) * Math.cos(thetaS),
+                    rScatter * Math.sin(phiS) * Math.sin(thetaS),
+                    rScatter * Math.cos(phiS)
+                );
+            }
+
+            update(dt, spreadFactor, focusTargetMesh) {
+                let focused = (focusTargetMesh && this.mesh === focusTargetMesh);
+
+                let target;
+                if (focused) {
+                    const desiredWorldPos = new THREE.Vector3(0, 1, 35);
+                    const invMatrix = new THREE.Matrix4().copy(mainGroup.matrixWorld).invert();
+                    target = desiredWorldPos.applyMatrix4(invMatrix);
+                } else if (this.type === 'PHOTO') {
+                    // Photos interpolate between galaxy ring and scattered sphere
+                    target = new THREE.Vector3().lerpVectors(this.posGalaxy, this.posScatter, spreadFactor);
+                } else {
+                    // Particles interpolate between galaxy tight and scattered
+                    target = new THREE.Vector3().lerpVectors(this.posGalaxy, this.posScatter, spreadFactor);
+                }
+
+                const lerpSpeed = focused ? 5.0 : 2.5;
+                this.mesh.position.lerp(target, lerpSpeed * dt);
+
+                if (focused) {
+                    this.mesh.lookAt(camera.position);
+                } else if (this.type === 'PHOTO') {
+                    this.mesh.lookAt(0, this.mesh.position.y, 0);
+                    this.mesh.rotateY(Math.PI);
+                } else if (spreadFactor > 0.5) {
+                    // Scattered: more spin
+                    this.mesh.rotation.x += this.spinSpeed.x * dt * (spreadFactor - 0.5) * 2;
+                    this.mesh.rotation.y += this.spinSpeed.y * dt * (spreadFactor - 0.5) * 2;
+                    this.mesh.rotation.z += this.spinSpeed.z * dt * (spreadFactor - 0.5) * 2;
+                } else {
+                    // Galaxy tight: slight drift
+                    if (this.type !== 'NEBULA') {
+                        this.mesh.rotation.x = THREE.MathUtils.lerp(this.mesh.rotation.x, 0, dt);
+                        this.mesh.rotation.z = THREE.MathUtils.lerp(this.mesh.rotation.z, 0, dt);
+                    }
+                }
+
+                let s = this.baseScale;
+                if (this.isNebula) {
+                    const nebulaGlow = 0.15 + spreadFactor * 0.85;
+                    s = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id)) * nebulaGlow;
+                } else if (this.type !== 'PHOTO') {
+                    const twinkle = 0.75 + 0.5 * Math.sin(clock.elapsedTime * this.twinkleSpeed + this.twinklePhase);
+                    s = this.baseScale * twinkle;
+                }
+                if (focused) {
+                    s = 4.5;
+                }
+                this.mesh.scale.lerp(new THREE.Vector3(s,s,s), 4*dt);
+            }
+        }
+
+        function updatePhotoLayout() {
+            const photos = particleSystem.filter(p => p.type === 'PHOTO');
+            const count = photos.length;
+            if (count === 0) return;
+            const numArms = CONFIG.particles.numArms;
+            photos.forEach((p, i) => {
+                const armIdx = i % numArms;
+                const armBase = (armIdx / numArms) * Math.PI * 2;
+                const frac = i / count;
+                const radius = 3.5 + frac * (CONFIG.particles.galaxyRadius - 2.5);
+                const angle = armBase + radius * 0.65;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                const y = (Math.random() - 0.5) * 1.0;
+                p.posGalaxy.set(x, y, z);
+            });
+        }
+
+        function createParticles() {
+            const sphereGeo = new THREE.SphereGeometry(0.18, 5, 5);
+            const octGeo = new THREE.OctahedronGeometry(0.15);
+            const boxGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+            const tinyGeo = new THREE.SphereGeometry(0.08, 4, 4);
+
+            const matCore = new THREE.MeshStandardMaterial({
+                color: 0xffeedd, metalness: 0.1, roughness: 0.2,
+                emissive: 0xffaa66, emissiveIntensity: 0.9
+            });
+            const matCoreHot = new THREE.MeshStandardMaterial({
+                color: 0xffffff, metalness: 0.05, roughness: 0.1,
+                emissive: 0xffdd99, emissiveIntensity: 1.2
+            });
+            const matArm = new THREE.MeshStandardMaterial({
+                color: 0xaaccff, metalness: 0.3, roughness: 0.3,
+                emissive: 0x335588, emissiveIntensity: 0.5
+            });
+            const matArmDeep = new THREE.MeshStandardMaterial({
+                color: 0x6688cc, metalness: 0.4, roughness: 0.25,
+                emissive: 0x223366, emissiveIntensity: 0.4
+            });
+            const matHii = new THREE.MeshStandardMaterial({
+                color: 0xff7799, metalness: 0.2, roughness: 0.35,
+                emissive: 0x661133, emissiveIntensity: 0.7
+            });
+            const matHalo = new THREE.MeshStandardMaterial({
+                color: 0x667799, metalness: 0.3, roughness: 0.5,
+                emissive: 0x111122, emissiveIntensity: 0.15
+            });
+
+            // --- Core bulge ---
+            for (let i = 0; i < CONFIG.particles.coreCount; i++) {
+                const r = Math.pow(Math.random(), 0.7) * 3.5;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const x = r * Math.sin(phi) * Math.cos(theta);
+                const y = r * Math.sin(phi) * Math.sin(theta) * 0.5;
+                const z = r * Math.cos(phi);
+                const mat = r < 1.2 ? matCoreHot : matCore;
+                const geo = r < 0.8 ? sphereGeo : (Math.random() < 0.5 ? sphereGeo : octGeo);
+                const mesh = new THREE.Mesh(geo, mat);
+                const s = r < 1.5 ? (0.4 + Math.random() * 0.7) : (0.25 + Math.random() * 0.5);
+                mesh.scale.set(s, s, s);
+                mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+                mesh.position.set(x, y, z);
+                mainGroup.add(mesh);
+                particleSystem.push(new Particle(mesh, 'CORE', false));
+            }
+
+            // --- Spiral arms ---
+            const numArms = CONFIG.particles.numArms;
+            for (let i = 0; i < CONFIG.particles.armCount; i++) {
+                const armIdx = i % numArms;
+                const armBase = (armIdx / numArms) * Math.PI * 2;
+                const r = Math.pow(Math.random(), 0.55) * CONFIG.particles.galaxyRadius;
+                const angle = armBase + r * 0.65;
+                const thickness = 0.3 + r * 0.18;
+                const perpOffset = (Math.random() + Math.random() + Math.random()) / 3 - 0.5;
+                const spread = perpOffset * thickness * 2.5;
+                const finalAngle = angle + spread / Math.max(r, 0.5);
+                const x = Math.cos(finalAngle) * r;
+                const z = Math.sin(finalAngle) * r;
+                const diskH = 1.5 * Math.exp(-r / 5.0);
+                const y = (Math.random() - 0.5) * diskH;
+
+                const mat = r < 5 ? matArm : matArmDeep;
+                const geo = Math.random() < 0.5 ? sphereGeo : octGeo;
+                const mesh = new THREE.Mesh(geo, mat);
+                const s = 0.15 + Math.random() * 0.55;
+                mesh.scale.set(s, s, s);
+                mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+                mesh.position.set(x, y, z);
+                mainGroup.add(mesh);
+                particleSystem.push(new Particle(mesh, 'ARM', false));
+            }
+
+            // --- HII regions (pink star-forming clumps in outer arms) ---
+            for (let i = 0; i < CONFIG.particles.hiiCount; i++) {
+                const armIdx = Math.floor(Math.random() * numArms);
+                const armBase = (armIdx / numArms) * Math.PI * 2;
+                const r = 4 + Math.random() * 11;
+                const centerAngle = armBase + r * 0.65;
+                const clumpAngle = centerAngle + (Math.random() - 0.5) * 0.35;
+                const clumpR = r + (Math.random() - 0.5) * 1.5;
+                const x = Math.cos(clumpAngle) * clumpR;
+                const z = Math.sin(clumpAngle) * clumpR;
+                const y = (Math.random() - 0.5) * 0.8;
+
+                const mesh = new THREE.Mesh(boxGeo, matHii);
+                const s = 0.2 + Math.random() * 0.5;
+                mesh.scale.set(s, s, s);
+                mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+                mesh.position.set(x, y, z);
+                mainGroup.add(mesh);
+                particleSystem.push(new Particle(mesh, 'HII', false));
+            }
+
+            // --- Halo (distant scattered stars) ---
+            for (let i = 0; i < CONFIG.particles.haloCount; i++) {
+                const r = 6 + Math.random() * 20;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const x = r * Math.sin(phi) * Math.cos(theta);
+                const y = r * Math.sin(phi) * Math.sin(theta) * 0.4;
+                const z = r * Math.cos(phi);
+
+                const mesh = new THREE.Mesh(tinyGeo, matHalo);
+                const s = 0.1 + Math.random() * 0.35;
+                mesh.scale.set(s, s, s);
+                mesh.position.set(x, y, z);
+                mainGroup.add(mesh);
+                particleSystem.push(new Particle(mesh, 'HALO', false));
+            }
+
+            mainGroup.add(photoMeshGroup);
+        }
+
+        function createNebula() {
+            const geo = new THREE.TetrahedronGeometry(0.12, 0);
+            const colors = [0x6644aa, 0x4466bb, 0x5533aa, 0x3366aa, 0x7744aa, 0x4455bb];
+
+            for (let i = 0; i < CONFIG.particles.nebulaCount; i++) {
+                const mat = new THREE.MeshBasicMaterial({
+                    color: colors[i % colors.length],
+                    transparent: true,
+                    opacity: 0.35 + Math.random() * 0.4
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.scale.setScalar(0.4 + Math.random() * 1.6);
+                mainGroup.add(mesh);
+                particleSystem.push(new Particle(mesh, 'NEBULA', true));
+            }
+        }
+
+        function addPhotoToScene(texture) {
+            const frameGeo = new THREE.BoxGeometry(1.4, 1.4, 0.05);
+            const frameMat = new THREE.MeshStandardMaterial({ color: CONFIG.colors.coreGold, metalness: 1.0, roughness: 0.1 });
+            const frame = new THREE.Mesh(frameGeo, frameMat);
+            let width = 1.2, height = 1.2;
+            if (texture.image) {
+                const aspect = texture.image.width / texture.image.height;
+                if (aspect > 1) { height = width / aspect; } else { width = height * aspect; }
+            }
+            const photoGeo = new THREE.PlaneGeometry(width, height);
+            const photoMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+            const photo = new THREE.Mesh(photoGeo, photoMat);
+            photo.position.z = 0.04;
+            const group = new THREE.Group();
+            group.add(frame);
+            group.add(photo);
+            frame.scale.set(width/1.2, height/1.2, 1);
+            const s = 0.8;
+            group.scale.set(s,s,s);
+            photoMeshGroup.add(group);
+            particleSystem.push(new Particle(group, 'PHOTO', false));
+            updatePhotoLayout();
+        }
+
+        function handleImageUpload(e) {
+            const files = e.target.files;
+            if (!files.length) return;
+            Array.from(files).forEach(f => {
+                if (!f.type.startsWith('image/')) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    new THREE.TextureLoader().load(ev.target.result, (t) => {
+                        t.colorSpace = THREE.SRGBColorSpace;
+                        addPhotoToScene(t);
+                    });
+                }
+                reader.readAsDataURL(f);
+            });
+        }
+
+        async function initMediaPipe() {
+            video = document.getElementById('webcam');
+            const constraints = {
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 30 }
+                }
+            };
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+            );
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: `./hand_landmarker.task`
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1
+            });
+            if (navigator.mediaDevices?.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    video.srcObject = stream;
+                    video.addEventListener("loadeddata", predictWebcam);
+                    debugInfo.innerText = "Webcam active. Show hand.";
+                } catch(e) {
+                    console.warn("Webcam access denied", e);
+                    debugInfo.innerText = "Camera error: " + e.message;
+                    document.getElementById('webcam-wrapper').style.display = 'none';
+                }
+            }
+        }
+
+        let lastVideoTime = -1;
+        async function predictWebcam() {
+            if (video.currentTime !== lastVideoTime) {
+                lastVideoTime = video.currentTime;
+                if (handLandmarker) {
+                    const result = handLandmarker.detectForVideo(video, performance.now());
+                    processGestures(result);
+                }
+            }
+            requestAnimationFrame(predictWebcam);
+        }
+
+        function processGestures(result) {
+            if (result.landmarks && result.landmarks.length > 0) {
+                STATE.hand.detected = true;
+                const lm = result.landmarks[0];
+                STATE.hand.x = (lm[9].x - 0.5) * 2;
+                STATE.hand.y = (lm[9].y - 0.5) * 2;
+                const thumb = lm[4], index = lm[8], wrist = lm[0], middleMCP = lm[9];
+                const handSize = Math.hypot(middleMCP.x - wrist.x, middleMCP.y - wrist.y);
+                if (handSize < 0.02) return;
+                const tips = [lm[8], lm[12], lm[16], lm[20]];
+                let avgTipDist = 0;
+                tips.forEach(t => avgTipDist += Math.hypot(t.x - wrist.x, t.y - wrist.y));
+                avgTipDist /= 4;
+                const extensionRatio = avgTipDist / handSize;
+                const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+                const pinchRatio = pinchDist / handSize;
+
+                // Map extension ratio to continuous spread factor (0=fist, 1=fully open)
+                STATE.targetSpread = Math.max(0, Math.min(1, (extensionRatio - 1.2) / 1.0));
+
+                // Pinch to focus a random photo
+                if (pinchRatio < 0.3 && !STATE.focusTarget) {
+                    const photos = particleSystem.filter(p => p.type === 'PHOTO');
+                    if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random()*photos.length)].mesh;
+                } else if (pinchRatio > 0.5) {
+                    STATE.focusTarget = null;
+                }
+
+                debugInfo.innerText = `Spread: ${STATE.spreadFactor.toFixed(2)} | Pinch: ${pinchRatio.toFixed(2)} | Focus: ${STATE.focusTarget ? 'ON' : 'OFF'}`;
+            } else {
+                STATE.hand.detected = false;
+                debugInfo.innerText = "No hand detected";
+            }
+        }
+
+        function setupEvents() {
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                composer.setSize(window.innerWidth, window.innerHeight);
+            });
+            document.getElementById('file-input').addEventListener('change', handleImageUpload);
+            document.getElementById('folder-input').addEventListener('change', handleImageUpload);
+
+            document.getElementById('toggle-camera-btn').addEventListener('click', () => {
+                const wrapper = document.getElementById('webcam-wrapper');
+                const btn = document.getElementById('toggle-camera-btn');
+                if (wrapper.style.display === 'none') {
+                    wrapper.style.display = 'block';
+                    btn.textContent = 'Hide Camera';
+                } else {
+                    wrapper.style.display = 'none';
+                    btn.textContent = 'Show Camera';
+                }
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key.toLowerCase() === 'h') {
+                    document.querySelector('.controls-wrapper')?.classList.toggle('ui-hidden');
+                    document.getElementById('webcam-wrapper')?.classList.toggle('ui-hidden');
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.1);
+
+            const coreGlow = mainGroup.getObjectByName('coreGlow');
+            if (coreGlow) coreGlow.material.uniforms.uTime.value = clock.elapsedTime;
+
+            // Smooth spread factor
+            STATE.spreadFactor += (STATE.targetSpread - STATE.spreadFactor) * Math.min(dt * 4, 1);
+
+            // Smooth hand position
+            const smoothSpeed = Math.min(dt * 5, 1);
+            STATE.hand.smoothX += (STATE.hand.x - STATE.hand.smoothX) * smoothSpeed;
+            STATE.hand.smoothY += (STATE.hand.y - STATE.hand.smoothY) * smoothSpeed;
+
+            if (STATE.hand.detected) {
+                const targetRotY = STATE.hand.smoothX * Math.PI * 1.2;
+                const targetRotX = STATE.hand.smoothY * Math.PI * 0.35;
+                STATE.rotation.y += (targetRotY - STATE.rotation.y) * 3.0 * dt;
+                STATE.rotation.x += (targetRotX - STATE.rotation.x) * 3.0 * dt;
+            } else {
+                const autoSpeed = 0.08 + STATE.spreadFactor * 0.35;
+                STATE.rotation.y += autoSpeed * dt;
+                STATE.rotation.x += (0 - STATE.rotation.x) * 1.5 * dt;
+            }
+
+            mainGroup.rotation.y = STATE.rotation.y;
+            mainGroup.rotation.x = STATE.rotation.x;
+            particleSystem.forEach(p => p.update(dt, STATE.spreadFactor, STATE.focusTarget));
+            updateShootingStars(dt);
+            composer.render();
+        }
+
+        init();
+    </script>
+</body>
+</html>
