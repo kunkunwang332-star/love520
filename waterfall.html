@@ -402,7 +402,7 @@
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
             );
             handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: 'https://cdn.jsdelivr.net/gh/kunkunwang332-star/love520@master/hand_landmarker.task', delegate: "GPU" }
+                baseOptions: { modelAssetPath: 'https://cdn.jsdelivr.net/gh/kunkunwang332-star/love520@master/hand_landmarker.task', delegate: "GPU" },
                 runningMode: "VIDEO",
                 numHands: 1
             });
