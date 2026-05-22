@@ -181,20 +181,37 @@
         const HALF_H = H / 2;
         const HALF_W = W / 2;
 
-        function init() {
-            initThree();
-            setupLights();
-            createWaterfallCurtain();
-            createSplash();
-            createMist();
-            setupPostProcessing();
-            setupEvents();
-            initMediaPipe();
+        function showStatus(msg) {
+            const el = document.querySelector('.loader-text');
+            if (el) el.textContent = msg;
+        }
 
-            const loader = document.getElementById('loader');
-            loader.style.opacity = 0;
-            setTimeout(() => loader.remove(), 800);
-            animate();
+        function init() {
+            try {
+                showStatus('初始化场景...');
+                initThree();
+                setupLights();
+                createWaterfallCurtain();
+                createSplash();
+                createMist();
+                setupPostProcessing();
+                setupEvents();
+                showStatus('加载AI模型...');
+                initMediaPipe();
+
+                const loader = document.getElementById('loader');
+                loader.style.opacity = 0;
+                setTimeout(() => loader.remove(), 800);
+                animate();
+            } catch(e) {
+                const loader = document.getElementById('loader');
+                const spinner = loader.querySelector('.spinner');
+                if (spinner) spinner.remove();
+                document.querySelector('.loader-text').textContent = '加载失败: ' + (e.message || '未知错误');
+                document.querySelector('.loader-text').style.color = '#ff6b6b';
+                document.querySelector('.loader-text').style.fontSize = '12px';
+                console.error('Init error:', e);
+            }
         }
 
         function initThree() {
@@ -577,6 +594,11 @@
         }
 
         init();
+        // 处理异步初始化错误
+        window.addEventListener('unhandledrejection', e => {
+            document.querySelector('.loader-text').textContent = '加载失败: ' + (e.reason?.message || '');
+            document.querySelector('.loader-text').style.color = '#ff6b6b';
+        });
     </script>
 </body>
 </html>

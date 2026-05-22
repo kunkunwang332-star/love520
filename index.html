@@ -252,24 +252,40 @@
         let snowSystem;
         const debugInfo = document.getElementById('debug-info');
 
-        async function init() {
-            initThree();
-            setupEnvironment(); 
-            setupLights();
-            createTextures();
-            createParticles(); 
-            createDust();
-            createSnow(); // 新增：创建雪花
-            loadPredefinedImages();
-            setupPostProcessing();
-            setupEvents();
-            await initMediaPipe();
-            
-            const loader = document.getElementById('loader');
-            loader.style.opacity = 0;
-            setTimeout(() => loader.remove(), 800);
+        function showStatus(msg) {
+            const el = document.querySelector('.loader-text');
+            if (el) el.textContent = msg;
+        }
 
-            animate();
+        async function init() {
+            try {
+                showStatus('初始化场景...');
+                initThree();
+                setupEnvironment();
+                setupLights();
+                createTextures();
+                createParticles();
+                createDust();
+                createSnow();
+                loadPredefinedImages();
+                setupPostProcessing();
+                setupEvents();
+                showStatus('加载AI模型...');
+                await initMediaPipe();
+
+                const loader = document.getElementById('loader');
+                loader.style.opacity = 0;
+                setTimeout(() => loader.remove(), 800);
+                animate();
+            } catch(e) {
+                const loader = document.getElementById('loader');
+                const spinner = loader.querySelector('.spinner');
+                if (spinner) spinner.remove();
+                document.querySelector('.loader-text').textContent = '加载失败: ' + (e.message || '未知错误');
+                document.querySelector('.loader-text').style.color = '#ff6b6b';
+                document.querySelector('.loader-text').style.fontSize = '12px';
+                console.error('Init error:', e);
+            }
         }
 
         // --- 增强版图片加载系统 ---
@@ -891,7 +907,10 @@
             composer.render();
         }
 
-        init();
+        init().catch(e => {
+            document.querySelector('.loader-text').textContent = '启动失败: ' + (e.message || '');
+            document.querySelector('.loader-text').style.color = '#ff6b6b';
+        });
     </script>
 </body>
 </html>
